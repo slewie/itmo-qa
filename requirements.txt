@@ -1,0 +1,12 @@
+beautifulsoup4==4.13.4
+fastapi==0.116.1
+langchain==0.3.27
+langchain_chroma==0.2.5
+langchain_huggingface==0.3.1
+langchain_llm7==2025.5.91116
+pydantic==2.11.7
+pypdf==5.9.0
+python-dotenv==1.1.1
+python-telegram-bot==22.3
+Requests==2.32.4
+uvicorn==0.29.0
