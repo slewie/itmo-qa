@@ -33,7 +33,7 @@ class RAGCore:
 
         retriever = self.vectordb.as_retriever(
             search_type="similarity",
-            search_kwargs={"k": 4},
+            search_kwargs={"k": 8},
         )
         self.qa_chain = create_retrieval_chain(retriever, self.combine_docs_chain)
         print("[RAGCore] Initialized successfully.")

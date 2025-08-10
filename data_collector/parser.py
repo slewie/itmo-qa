@@ -1,10 +1,10 @@
-import requests
-from bs4 import BeautifulSoup
-from pathlib import Path
-import json
 import re
 import io
+import json
+import requests
+from pathlib import Path
 from pypdf import PdfReader
+from bs4 import BeautifulSoup
 
 BASE_URLS = [
     "https://abit.itmo.ru/program/master/ai",
@@ -35,78 +35,87 @@ def fetch_and_parse_pdf(program_id: str) -> list:
         response.raise_for_status()
 
         pdf_file = io.BytesIO(response.content)
-        reader = PdfReader(pdf_file)
 
-        full_text = ""
-        for page in reader.pages:
-            full_text += page.extract_text() + "\n"
-
-        return parse_curriculum_text(full_text)
+        return parse_curriculum_text(pdf_file)
 
     except requests.RequestException as e:
         print(f"Error fetching or parsing PDF for program_id {program_id}: {e}")
         return []
 
 
-def parse_curriculum_text(text: str) -> list:
+def parse_curriculum_text(pdf_file) -> list:
     """
     Извлекает список дисциплин из сырого текста PDF.
     Это самая хрупкая часть, т.к. зависит от формата PDF.
     """
-    courses = []
-    lines = text.split("\n")
 
+    reader = PdfReader(pdf_file)
+    disciplines = []
+    current_block = None
     current_semester = None
-    current_type = "Обязательная"  # По умолчанию считаем дисциплину обязательной
 
-    # Ключевые слова-маркеры
-    semester_keywords = [f"{i} семестр" for i in range(1, 5)]
-    elective_keyword = "Дисциплины по выбору"
-
-    for line in lines:
-        line = line.strip()
-        if not line:
+    for page in reader.pages:
+        text = page.extract_text()
+        if not text:
             continue
 
-        # Определяем текущий семестр
-        for keyword in semester_keywords:
-            if keyword in line.lower():
-                current_semester = keyword.split()[0]
-                # После смены семестра сбрасываем тип на обязательный
-                current_type = "Обязательная"
-                break
+        lines = text.split("\n")
+        for line in lines:
+            line = line.strip()
 
-        # Определяем тип дисциплин
-        if elective_keyword.lower() in line.lower():
-            current_type = "По выбору"
-            continue  # Пропускаем саму строку-заголовок
+            intensity_hour = None
+            intensity_ze = None
 
-        # Простая эвристика для определения строки с дисциплиной:
-        # Она не является заголовком и часто содержит цифры (часы, з.е.)
-        is_course_line = (
-            not any(
-                kw in line.lower()
-                for kw in semester_keywords + [elective_keyword.lower()]
-            )
-            and "з.е." in line
-            and not line.lower().startswith("итого")
-        )
+            if not line:
+                continue
 
-        if is_course_line and current_semester:
-            # Убираем лишнее из строки (часы, з.е. и т.д.)
-            # Этот паттерн может потребовать доработки под конкретный формат
-            course_name = re.split(r"\s\d", line)[0].strip()
-            # Исключаем артефакты парсинга
-            if len(course_name) > 3 and "практика" not in course_name.lower():
-                courses.append(
-                    {
-                        "name": course_name,
-                        "semester": int(current_semester),
-                        "type": current_type,
-                    }
-                )
+            if "Блок" in line:
+                current_block = line
+                continue
 
-    return courses
+            splitted_line = line.split()
+
+            # Определение семестра (цифра в начале строки или отдельно)
+            if splitted_line[0].isdigit():
+                current_semester = splitted_line[0]
+
+            # Определяем Трудоемкость в з.е. и в час
+            if splitted_line[-2].isdigit():
+                intensity_ze = splitted_line[-2]
+
+            if splitted_line[-1].isdigit():
+                intensity_hour = splitted_line[-1]
+
+            # Пропускаем строки с трудоемкостью и пустые/служебные строки
+            if "Трудоемкость" in line or line.replace(" ", "").isdigit():
+                continue
+
+            if current_semester and current_block and line:
+                # Убираем номер семестра из названия дисциплины (если есть)
+                discipline_name = line.replace(current_semester, "").strip()
+                if intensity_hour:
+                    discipline_name = (
+                        discipline_name.replace(intensity_hour, "").strip()
+                    )
+                
+                if intensity_ze:
+                    discipline_name = (
+                        discipline_name.replace(intensity_ze, "").strip()
+                    )
+                if not discipline_name.startswith(
+                    "Обязательные дисциплины"
+                ) and not discipline_name.startswith("Пул выборных дисциплин"):
+                    disciplines.append(
+                        {
+                            "Дисциплина": discipline_name,
+                            "Тип": current_block,
+                            "Семестр": current_semester,
+                            "Трудоемкость в часах": intensity_hour,
+                            "Трудоемкость в з.е.": intensity_ze,
+                        }
+                    )
+
+    return disciplines
 
 
 def parse_program_page(html: str, program_url: str) -> dict:
