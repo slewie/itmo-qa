@@ -56,9 +56,9 @@ class RAGCore:
             f"[RAGCore] Generating recommendations for background: {user_background[:50]}..."
         )
         elective_retriever = self.vectordb.as_retriever(
-            search_kwargs={"filter": {"course_type": "По выбору"}, "k": 20}
+            search_kwargs={"k": 30}
         )
-        docs = elective_retriever.invoke("дисциплины по выбору")
+        docs = elective_retriever.invoke(f"Дисцпилины для человека с опытом: {user_background}")
 
         if not docs:
             return {
@@ -77,8 +77,11 @@ class RAGCore:
         )
 
         return {
-            "answer": result,
-            "source_documents": docs,
+            "answer": result.content,
+            "source_documents": [
+                {"page_content": doc.page_content, "metadata": doc.metadata}
+                for doc in docs
+            ],
         }
 
 
